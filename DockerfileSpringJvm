@@ -1,3 +1,6 @@
+# Run the below command to use this docker image
+# docker build -f DockerfileSpringJvm --tag=dev.suryam.spring-jvm-poc:v1 .
+
 FROM container-registry.oracle.com/java/openjdk:21.0.1 AS builder
 WORKDIR /build
 COPY . /build

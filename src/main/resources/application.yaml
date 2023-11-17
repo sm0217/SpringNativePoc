@@ -1,0 +1,22 @@
+logging.level.root: INFO
+
+resilience4j.circuitbreaker:
+  configs:
+    default:
+      slidingWindowSize: 3
+      permittedNumberOfCallsInHalfOpenState: 3
+      waitDurationInOpenState: 3000
+      failureRateThreshold: 60
+      eventConsumerBufferSize: 10
+      registerHealthIndicator: true
+    someShared:
+      slidingWindowSize: 50
+      permittedNumberOfCallsInHalfOpenState: 10
+    recordExceptions:
+        - dev.suryam.springNativePoc.exception.CustomHttpException
+  instances:
+    backendA:
+      baseConfig: default
+      waitDurationInOpenState: 5000
+    backendB:
+      baseConfig: someShared

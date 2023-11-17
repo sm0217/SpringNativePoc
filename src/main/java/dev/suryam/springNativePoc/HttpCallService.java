@@ -1,9 +1,12 @@
 package dev.suryam.springNativePoc;
 
+import dev.suryam.springNativePoc.exception.CustomCBException;
+import dev.suryam.springNativePoc.exception.CustomHttpException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,25 +25,29 @@ public class HttpCallService {
         this.webClient = webClientBuilder.build();
     }
 
+    @CircuitBreaker(name = "backendA", fallbackMethod = "fallback")
     public List<Map<String, Object>> parallelHttpCalls(int numberOfCalls) throws Exception {
+        try {
+            List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();
+            for (int i = 0; i < numberOfCalls; i++) {
+                CompletableFuture<Map<String, Object>> future = makeAsyncHttpCall(i);
+                futures.add(future);
+            }
 
-        List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();
-        for (int i = 0; i < numberOfCalls; i++) {
-            CompletableFuture<Map<String, Object>> future = makeAsyncHttpCall(i);
-            futures.add(future);
+            CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+            allOf.get();
+
+            return futures.stream()
+                    .map(CompletableFuture::join)
+                    .collect(Collectors.toList());
+        } catch (Exception ex) {
+            System.out.println("Exception calling external service");
+            throw new CustomHttpException("");
         }
-
-        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
-        allOf.get();
-
-        return futures.stream()
-                .map(CompletableFuture::join)
-                .collect(Collectors.toList());
     }
 
     public CompletableFuture<Map<String, Object>> makeAsyncHttpCall(int index) {
         String url = "http://host.docker.internal:9000/states";
-
         return webClient.get()
                 .uri(url)
                 .retrieve()
@@ -51,12 +58,11 @@ public class HttpCallService {
                     result.put("response", responseBody);
                     return result;
                 })
-                .onErrorResume(throwable -> {
-                    Map<String, Object> errorResult = new HashMap<>();
-                    errorResult.put("index", index);
-                    errorResult.put("error", throwable.getMessage());
-                    return Mono.just(errorResult);
-                })
                 .toFuture();
+    }
+
+    private List<Map<String, Object>> fallback(int index, CallNotPermittedException ex) {
+        System.out.println("Circuit breaker fallback executed");
+        throw new CustomCBException("Resilince4j circuit breaker fallback");
     }
 }
