@@ -1,0 +1,8 @@
+FROM container-registry.oracle.com/java/openjdk:21.0.1 AS builder
+WORKDIR /build
+COPY . /build
+RUN ./mvnw clean package
+FROM container-registry.oracle.com/java/openjdk:21.0.1
+EXPOSE 8080
+COPY --from=builder /build/target/spring-native-graalvm-0.0.1-SNAPSHOT.jar /app/spring-native-graalvm-0.0.1-SNAPSHOT.jar
+ENTRYPOINT ["java","-jar","/app/spring-native-graalvm-0.0.1-SNAPSHOT.jar","--server.port=8080"]
