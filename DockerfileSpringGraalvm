@@ -4,7 +4,7 @@
 FROM ghcr.io/graalvm/graalvm-community:21 AS builder
 WORKDIR /build
 COPY . /build
-RUN ./mvnw --no-transfer-progress native:compile -Pnative  -e
+RUN ./mvnw --no-transfer-progress native:compile -Pnative  -e -X
 FROM container-registry.oracle.com/os/oraclelinux:9-slim
 EXPOSE 8080
 COPY --from=0 "/build/target/spring-native-graalvm" spring-native-graalvm

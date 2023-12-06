@@ -20,3 +20,55 @@ resilience4j.circuitbreaker:
       waitDurationInOpenState: 5000
     backendB:
       baseConfig: someShared
+
+---
+
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+  threads:
+    virtual:
+      enabled: true
+config:
+  config1: "prodConfig1Value"
+  config2: "prodConfig2Value"
+
+---
+
+# Configurations for the 'test' profile
+spring:
+  config:
+    activate:
+      on-profile: test
+config:
+  config1: "testConfig1Value"
+  config2: "testConfig2Value"
+
+---
+
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/mydatabase
+    password: root
+    hikari:
+      idle-timeout: 30000
+      maximum-pool-size: 150
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+      pool-name: HikariCP
+      minimum-idle: 100
+  jpa:
+    database-platform: org.hibernate.dialect.MySQLDialect
+    hibernate:
+      ddl-auto: update
+
+config:
+  config1: "testConfig1Value"
+  config2: "testConfig2Value"
+server:
+  port: 8084
