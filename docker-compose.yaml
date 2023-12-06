@@ -1,0 +1,102 @@
+version: '3.4'
+
+networks:
+  k6:
+  grafana:
+  my-network:
+
+services:
+  springjvm:
+    image: dev.suryam.spring-jvm-poc:v6
+#    entrypoint: /bin/sh
+#    user: root
+    networks:
+      - k6
+      - grafana
+    ports:
+      - "8080:8080"
+    environment:
+      - MYSQL_HOST=mysql
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 512M
+    depends_on:
+      - mysql
+
+  springgraalvm:
+    image: dev.suryam.spring-graalvm-poc:v7
+#    entrypoint: /bin/sh
+#    user: root
+    networks:
+      - k6
+      - grafana
+    ports:
+      - "8081:8084"
+    environment:
+      - MYSQL_HOST=mysql
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 512M
+    depends_on:
+      - mysql
+  
+  quarkus:
+    image: dev.suryam.quarkus-poc:v3
+#    entrypoint: /bin/sh
+#    user: root
+    networks:
+      - k6
+      - grafana
+    ports:
+      - "9000:9000"
+    environment:
+      - MYSQL_HOST=mysql
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 512M
+    depends_on:
+      - mysql
+
+  k6:
+    image: loadimpact/k6:latest
+    platform: linux/x86_64
+#    entrypoint: /bin/sh
+#    user: root
+    networks:
+      - k6
+      - my-network
+    ports:
+      - "6565:6565"
+    environment:
+      - K6_OUT=influxdb=http://influxdb:8086/k6
+    volumes:
+      - ./scripts:/scripts
+
+  mysql:
+    image: mysql:latest
+    platform: linux/x86_64
+#    entrypoint: /bin/sh
+#    user: root
+    networks:
+      - k6
+      - my-network
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=mydatabase
