@@ -3,11 +3,11 @@
 
 ## To build docker image for Spring boot JVM
 
-docker build -f DockerfileSpringJvm --tag=<Image Name>:<Version> .
+docker build -f DockerfileSpringJvm --tag=\<Image Name\>:\<Version\> .
 
 ## To build docker image for Spring boot Native Graalvm
 
-docker build -f DockerfileSpringGraalvm --tag=<Image Name>:<Version> .
+docker build -f DockerfileSpringGraalvm --tag=\<Image Name\>:\<Version\> .
 
 ## Spinning up docker containers
 
