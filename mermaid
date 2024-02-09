@@ -21,3 +21,25 @@ sequenceDiagram
     ConsentManagementService ->> Database: Retrieve transaction details (Transaction table: transaction_id, transaction_details)
     Database -->> ConsentManagementService: Return transaction details
     ConsentManagementService -->> DownstreamAPI: Return transaction details
+
+
+graph TD;
+    User((User)) -- Initiates consent request --> ClientApplication((Client Application))
+    ClientApplication -- Request to create consent --> ConsentManagementService((Consent Management Service))
+    ConsentManagementService -- Validate user and permissions --> Database((Database))
+    Database -. Return user details .-> ConsentManagementService
+    ConsentManagementService -- Request to create consent --> DownstreamAPI((Downstream API))
+    DownstreamAPI -- Save consent details --> Database
+    Database -. Return success status .-> DownstreamAPI
+    DownstreamAPI -. Return success status .-> ConsentManagementService
+    ConsentManagementService -. Return consent creation status .-> ClientApplication
+    ClientApplication -. Display consent creation status .-> User
+
+    subgraph Grouped Transactions Request/Responses
+        DownstreamAPI -- Request transaction details --> ConsentManagementService
+        ConsentManagementService -- Retrieve transaction details --> Database
+        Database -. Return transaction details .-> ConsentManagementService
+        ConsentManagementService -. Return transaction details .-> DownstreamAPI
+    end
+
+
