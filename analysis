@@ -1,86 +1,101 @@
 package com.example.analyzer;
 
-import org.reflections.Reflections;
-import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.stereotype.Controller;
-import org.springframework.stereotype.Repository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
-public class StaticCodeAnalyzer {
+@Service
+public class DocumentationService {
 
-    public void analyzeAndGenerateDocumentation(String basePackage, String outputFilePath) throws IOException {
-        Reflections reflections = new Reflections(basePackage);
+    @Autowired
+    private ApplicationContext applicationContext;
 
-        try (FileWriter writer = new FileWriter(outputFilePath)) {
-            analyzeControllers(reflections, writer);
-            analyzeRepositories(reflections, writer);
-            analyzeFeignClients(reflections, writer);
-        }
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public String generateDocumentation() throws IOException {
+        StringBuilder documentation = new StringBuilder();
+
+        analyzeControllers(documentation);
+        analyzeRepositories(documentation);
+        analyzeFeignClients(documentation);
+
+        return documentation.toString();
     }
 
-    private void analyzeControllers(Reflections reflections, FileWriter writer) throws IOException {
-        Set<Class<?>> controllerClasses = reflections.getTypesAnnotatedWith(Controller.class);
+    private void analyzeControllers(StringBuilder documentation) {
+        Map<String, Object> controllers = applicationContext.getBeansWithAnnotation(RestController.class);
 
-        writer.write("### Controllers:\n");
-        for (Class<?> controllerClass : controllerClasses) {
-            writer.write("Controller: " + controllerClass.getName() + "\n");
+        documentation.append("### Controllers:\n");
+        for (Object controller : controllers.values()) {
+            Class<?> controllerClass = controller.getClass();
+            documentation.append("Controller: ").append(controllerClass.getName()).append("\n");
             Method[] methods = controllerClass.getDeclaredMethods();
             for (Method method : methods) {
                 Annotation[] annotations = method.getDeclaredAnnotations();
                 for (Annotation annotation : annotations) {
                     if (annotation instanceof RequestMapping) {
                         RequestMapping requestMapping = (RequestMapping) annotation;
-                        writeMappingInfo(writer, method, requestMapping.method(), requestMapping.value());
+                        writeMappingInfo(documentation, method, requestMapping.method(), requestMapping.value());
                     } else if (annotation instanceof GetMapping) {
                         GetMapping getMapping = (GetMapping) annotation;
-                        writeMappingInfo(writer, method, RequestMethod.GET, getMapping.value());
+                        writeMappingInfo(documentation, method, RequestMethod.GET, getMapping.value());
                     } else if (annotation instanceof PostMapping) {
                         PostMapping postMapping = (PostMapping) annotation;
-                        writeMappingInfo(writer, method, RequestMethod.POST, postMapping.value());
+                        writeMappingInfo(documentation, method, RequestMethod.POST, postMapping.value());
                     } else if (annotation instanceof PutMapping) {
                         PutMapping putMapping = (PutMapping) annotation;
-                        writeMappingInfo(writer, method, RequestMethod.PUT, putMapping.value());
+                        writeMappingInfo(documentation, method, RequestMethod.PUT, putMapping.value());
                     } else if (annotation instanceof DeleteMapping) {
                         DeleteMapping deleteMapping = (DeleteMapping) annotation;
-                        writeMappingInfo(writer, method, RequestMethod.DELETE, deleteMapping.value());
+                        writeMappingInfo(documentation, method, RequestMethod.DELETE, deleteMapping.value());
                     }
                 }
             }
-            writer.write("\n");
+            documentation.append("\n");
         }
     }
 
-    private void writeMappingInfo(FileWriter writer, Method method, RequestMethod[] methods, String[] values) throws IOException {
+    private void writeMappingInfo(StringBuilder documentation, Method method, RequestMethod[] methods, String[] values) {
         for (RequestMethod requestMethod : methods) {
             for (String value : values) {
-                writer.write("\t" + requestMethod + " " + value + " -> " + method.getName() + "\n");
+                documentation.append("\t").append(requestMethod).append(" ").append(value).append(" -> ").append(method.getName()).append("\n");
             }
         }
     }
 
-    private void writeMappingInfo(FileWriter writer, Method method, RequestMethod requestMethod, String[] values) throws IOException {
+    private void writeMappingInfo(StringBuilder documentation, Method method, RequestMethod requestMethod, String[] values) {
         for (String value : values) {
-            writer.write("\t" + requestMethod + " " + value + " -> " + method.getName() + "\n");
+            documentation.append("\t").append(requestMethod).append(" ").append(value).append(" -> ").append(method.getName()).append("\n");
         }
     }
 
-    private void analyzeRepositories(Reflections reflections, FileWriter writer) throws IOException {
-        Set<Class<?>> repositoryClasses = reflections.getTypesAnnotatedWith(Repository.class);
+    private void analyzeRepositories(StringBuilder documentation) throws IOException {
+        Map<String, Object> repositories = applicationContext.getBeansWithAnnotation(Repository.class);
 
-        writer.write("### Repositories:\n");
-        for (Class<?> repositoryClass : repositoryClasses) {
-            writer.write("Repository: " + repositoryClass.getName() + "\n");
+        documentation.append("### Repositories:\n");
+        for (Object repository : repositories.values()) {
+            Class<?> repositoryClass = repository.getClass();
+            documentation.append("Repository: ").append(repositoryClass.getName()).append("\n");
             Method[] methods = repositoryClass.getDeclaredMethods();
             for (Method method : methods) {
-                writer.write("\tMethod: " + method.getName() + " - Operation: " + inferDatabaseOperation(method.getName()) + "\n");
+                documentation.append("\tMethod: ").append(method.getName()).append(" - Operation: ").append(inferDatabaseOperation(method.getName())).append("\n");
+                if (method.getReturnType() != void.class) {
+                    String responseJson = generateJsonSchema(method.getGenericReturnType());
+                    documentation.append("\tResponse JSON: ").append(responseJson).append("\n");
+                }
             }
-            writer.write("\n");
+            documentation.append("\n");
         }
     }
 
@@ -95,47 +110,56 @@ public class StaticCodeAnalyzer {
         return "UNKNOWN";
     }
 
-    private void analyzeFeignClients(Reflections reflections, FileWriter writer) throws IOException {
-        Set<Class<?>> feignClientClasses = reflections.getTypesAnnotatedWith(FeignClient.class);
+    private void analyzeFeignClients(StringBuilder documentation) throws IOException {
+        // Find all classes ending with "Client"
+        Set<Class<?>> feignClientClasses = applicationContext.getBeansOfType(Object.class).values().stream()
+                .map(Object::getClass)
+                .filter(clazz -> clazz.getSimpleName().endsWith("Client"))
+                .collect(Collectors.toSet());
 
-        writer.write("### Feign Clients:\n");
+        documentation.append("### Feign Clients:\n");
         for (Class<?> feignClientClass : feignClientClasses) {
-            FeignClient feignClient = feignClientClass.getAnnotation(FeignClient.class);
-            writer.write("Feign Client: " + feignClientClass.getName() + "\n");
-            writer.write("\tName: " + feignClient.name() + "\n");
-            writer.write("\tURL: " + feignClient.url() + "\n");
+            documentation.append("Feign Client: ").append(feignClientClass.getName()).append("\n");
             Method[] methods = feignClientClass.getDeclaredMethods();
             for (Method method : methods) {
-                writer.write("\tMethod: " + method.getName() + " - HTTP Method: " + inferHttpMethod(method) + "\n");
+                documentation.append("\tMethod: ").append(method.getName()).append(" - HTTP Method: ").append(inferHttpMethod(method)).append("\n");
+                String requestJson = generateJsonSchema(getFirstParameterType(method));
+                String responseJson = generateJsonSchema(method.getGenericReturnType());
+                documentation.append("\tRequest JSON: ").append(requestJson).append("\n");
+                documentation.append("\tResponse JSON: ").append(responseJson).append("\n");
             }
-            writer.write("\n");
+            documentation.append("\n");
         }
     }
 
     private String inferHttpMethod(Method method) {
-        Annotation[] annotations = method.getDeclaredAnnotations();
-        for (Annotation annotation : annotations) {
-            if (annotation instanceof RequestMapping) {
-                RequestMapping requestMapping = (RequestMapping) annotation;
-                return requestMapping.method().length > 0 ? requestMapping.method()[0].name() : "UNKNOWN";
-            } else if (annotation instanceof GetMapping) {
-                return "GET";
-            } else if (annotation instanceof PostMapping) {
-                return "POST";
-            } else if (annotation instanceof PutMapping) {
-                return "PUT";
-            } else if (annotation instanceof DeleteMapping) {
-                return "DELETE";
-            }
-        }
-        return "UNKNOWN";
+        // This implementation might vary based on how you define HTTP methods in your manually created Feign clients.
+        // Adjust this part according to your specific implementation.
+        // For simplicity, we assume GET for demonstration.
+        return "GET";
     }
 
-    public static void main(String[] args) {
+    private Type getFirstParameterType(Method method) {
+        return method.getGenericParameterTypes().length > 0 ? method.getGenericParameterTypes()[0] : null;
+    }
+
+    private String generateJsonSchema(Type type) {
+        if (type == null) return "{}";
         try {
-            new StaticCodeAnalyzer().analyzeAndGenerateDocumentation("com.example", "documentation.txt");
-        } catch (IOException e) {
-            e.printStackTrace();
+            Object instance = createInstance(type);
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(instance);
+        } catch (Exception e) {
+            return "{}";
         }
     }
+
+    private Object createInstance(Type type) throws Exception {
+        if (type instanceof Class) {
+            return ((Class<?>) type).getDeclaredConstructor().newInstance();
+        } else if (type instanceof ParameterizedType) {
+            return ((Class<?>) ((ParameterizedType) type).getRawType()).getDeclaredConstructor().newInstance();
+        }
+        return new Object();
+    }
 }
+
