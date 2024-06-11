@@ -1,0 +1,141 @@
+package com.example.analyzer;
+
+import org.reflections.Reflections;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.stereotype.Controller;
+import org.springframework.stereotype.Repository;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.FileWriter;
+import java.io.IOException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
+import java.util.Set;
+
+public class StaticCodeAnalyzer {
+
+    public void analyzeAndGenerateDocumentation(String basePackage, String outputFilePath) throws IOException {
+        Reflections reflections = new Reflections(basePackage);
+
+        try (FileWriter writer = new FileWriter(outputFilePath)) {
+            analyzeControllers(reflections, writer);
+            analyzeRepositories(reflections, writer);
+            analyzeFeignClients(reflections, writer);
+        }
+    }
+
+    private void analyzeControllers(Reflections reflections, FileWriter writer) throws IOException {
+        Set<Class<?>> controllerClasses = reflections.getTypesAnnotatedWith(Controller.class);
+
+        writer.write("### Controllers:\n");
+        for (Class<?> controllerClass : controllerClasses) {
+            writer.write("Controller: " + controllerClass.getName() + "\n");
+            Method[] methods = controllerClass.getDeclaredMethods();
+            for (Method method : methods) {
+                Annotation[] annotations = method.getDeclaredAnnotations();
+                for (Annotation annotation : annotations) {
+                    if (annotation instanceof RequestMapping) {
+                        RequestMapping requestMapping = (RequestMapping) annotation;
+                        writeMappingInfo(writer, method, requestMapping.method(), requestMapping.value());
+                    } else if (annotation instanceof GetMapping) {
+                        GetMapping getMapping = (GetMapping) annotation;
+                        writeMappingInfo(writer, method, RequestMethod.GET, getMapping.value());
+                    } else if (annotation instanceof PostMapping) {
+                        PostMapping postMapping = (PostMapping) annotation;
+                        writeMappingInfo(writer, method, RequestMethod.POST, postMapping.value());
+                    } else if (annotation instanceof PutMapping) {
+                        PutMapping putMapping = (PutMapping) annotation;
+                        writeMappingInfo(writer, method, RequestMethod.PUT, putMapping.value());
+                    } else if (annotation instanceof DeleteMapping) {
+                        DeleteMapping deleteMapping = (DeleteMapping) annotation;
+                        writeMappingInfo(writer, method, RequestMethod.DELETE, deleteMapping.value());
+                    }
+                }
+            }
+            writer.write("\n");
+        }
+    }
+
+    private void writeMappingInfo(FileWriter writer, Method method, RequestMethod[] methods, String[] values) throws IOException {
+        for (RequestMethod requestMethod : methods) {
+            for (String value : values) {
+                writer.write("\t" + requestMethod + " " + value + " -> " + method.getName() + "\n");
+            }
+        }
+    }
+
+    private void writeMappingInfo(FileWriter writer, Method method, RequestMethod requestMethod, String[] values) throws IOException {
+        for (String value : values) {
+            writer.write("\t" + requestMethod + " " + value + " -> " + method.getName() + "\n");
+        }
+    }
+
+    private void analyzeRepositories(Reflections reflections, FileWriter writer) throws IOException {
+        Set<Class<?>> repositoryClasses = reflections.getTypesAnnotatedWith(Repository.class);
+
+        writer.write("### Repositories:\n");
+        for (Class<?> repositoryClass : repositoryClasses) {
+            writer.write("Repository: " + repositoryClass.getName() + "\n");
+            Method[] methods = repositoryClass.getDeclaredMethods();
+            for (Method method : methods) {
+                writer.write("\tMethod: " + method.getName() + " - Operation: " + inferDatabaseOperation(method.getName()) + "\n");
+            }
+            writer.write("\n");
+        }
+    }
+
+    private String inferDatabaseOperation(String methodName) {
+        if (methodName.startsWith("find") || methodName.startsWith("get") || methodName.startsWith("read")) {
+            return "READ";
+        } else if (methodName.startsWith("save") || methodName.startsWith("insert") || methodName.startsWith("update")) {
+            return "WRITE";
+        } else if (methodName.startsWith("delete") || methodName.startsWith("remove")) {
+            return "DELETE";
+        }
+        return "UNKNOWN";
+    }
+
+    private void analyzeFeignClients(Reflections reflections, FileWriter writer) throws IOException {
+        Set<Class<?>> feignClientClasses = reflections.getTypesAnnotatedWith(FeignClient.class);
+
+        writer.write("### Feign Clients:\n");
+        for (Class<?> feignClientClass : feignClientClasses) {
+            FeignClient feignClient = feignClientClass.getAnnotation(FeignClient.class);
+            writer.write("Feign Client: " + feignClientClass.getName() + "\n");
+            writer.write("\tName: " + feignClient.name() + "\n");
+            writer.write("\tURL: " + feignClient.url() + "\n");
+            Method[] methods = feignClientClass.getDeclaredMethods();
+            for (Method method : methods) {
+                writer.write("\tMethod: " + method.getName() + " - HTTP Method: " + inferHttpMethod(method) + "\n");
+            }
+            writer.write("\n");
+        }
+    }
+
+    private String inferHttpMethod(Method method) {
+        Annotation[] annotations = method.getDeclaredAnnotations();
+        for (Annotation annotation : annotations) {
+            if (annotation instanceof RequestMapping) {
+                RequestMapping requestMapping = (RequestMapping) annotation;
+                return requestMapping.method().length > 0 ? requestMapping.method()[0].name() : "UNKNOWN";
+            } else if (annotation instanceof GetMapping) {
+                return "GET";
+            } else if (annotation instanceof PostMapping) {
+                return "POST";
+            } else if (annotation instanceof PutMapping) {
+                return "PUT";
+            } else if (annotation instanceof DeleteMapping) {
+                return "DELETE";
+            }
+        }
+        return "UNKNOWN";
+    }
+
+    public static void main(String[] args) {
+        try {
+            new StaticCodeAnalyzer().analyzeAndGenerateDocumentation("com.example", "documentation.txt");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
