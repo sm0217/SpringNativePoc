@@ -1,0 +1,92 @@
+mkdir mock-server
+cd mock-server
+
+
+npm init -y
+
+npm install express body-parser
+
+{
+  "name": "mock-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "express": "^4.17.1"
+  }
+}
+
+
+
+const express = require('express');
+const bodyParser = require('body-parser');
+const app = express();
+app.use(bodyParser.json());
+
+let mocks = [];
+
+// Create a mock endpoint
+app.post('/api/mocks', (req, res) => {
+    const { endpoint, httpMethod, requestBody, responseBody, httpStatus, headers, expirationTime } = req.body;
+    const mock = { endpoint, httpMethod, requestBody, responseBody, httpStatus, headers, expirationTime: expirationTime || Date.now() + 3600 * 1000 };
+    mocks.push(mock);
+    res.status(201).send('Mock created');
+});
+
+// List all active mocks
+app.get('/api/mocks', (req, res) => {
+    res.json(mocks.filter(mock => mock.expirationTime > Date.now()));
+});
+
+// Handle all other requests
+app.all('*', (req, res) => {
+    const { method, path, body, headers } = req;
+    const matchingMock = mocks.find(mock => {
+        if (mock.expirationTime <= Date.now()) return false;
+        if (mock.httpMethod !== method) return false;
+        if (!new RegExp(`^${mock.endpoint.replace(/\{[^}]+\}/g, '[^/]+')}$`).test(path)) return false;
+        if (mock.requestBody && JSON.stringify(mock.requestBody) !== JSON.stringify(body)) return false;
+        if (mock.headers) {
+            for (const key in mock.headers) {
+                if (mock.headers[key] !== headers[key.toLowerCase()]) return false;
+            }
+        }
+        return true;
+    });
+
+    if (matchingMock) {
+        res.status(matchingMock.httpStatus).json(matchingMock.responseBody);
+    } else {
+        res.status(404).send('Not Found');
+    }
+});
+
+// Start the server
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+    console.log(`Mock server running on port ${port}`);
+});
+
+
+
+npm start
+
+
+{
+    "endpoint": "/test/{id}",
+    "httpMethod": "GET",
+    "requestBody": {"name": "test"},
+    "responseBody": {"message": "Hello, World!"},
+    "httpStatus": 200,
+    "headers": {
+        "content-type": "application/json"
+    },
+    "expirationTime": null
+}
