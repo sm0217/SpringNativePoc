@@ -1,0 +1,53 @@
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
+import org.jose4j.jwk.JsonWebKeySet;
+import org.jose4j.jwk.RsaJsonWebKey;
+
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+import java.util.Date;
+
+public class JwtUtil {
+
+    public static RsaJsonWebKey getRsaJsonWebKeyFromJWKS(String jwksJson) throws Exception {
+        JsonWebKeySet jwks = new JsonWebKeySet(jwksJson);
+        return (RsaJsonWebKey) jwks.getJsonWebKeys().get(0); // Assuming the key you need is the first one
+    }
+
+    public static String createJwtAssertion(String jwksJson, String issuer, String subject, String audience, long ttlMillis) throws Exception {
+        // Parse the JWKS and get the RSA key
+        RsaJsonWebKey rsaJsonWebKey = getRsaJsonWebKeyFromJWKS(jwksJson);
+        PrivateKey privateKey = rsaJsonWebKey.getPrivateKey();
+
+        long nowMillis = System.currentTimeMillis();
+        Date now = new Date(nowMillis);
+
+        return Jwts.builder()
+                .setIssuer(issuer)
+                .setSubject(subject)
+                .setAudience(audience)
+                .setIssuedAt(now)
+                .setExpiration(new Date(nowMillis + ttlMillis))
+                .signWith(privateKey, SignatureAlgorithm.RS256)
+                .compact();
+    }
+
+    public static void main(String[] args) {
+        try {
+            // Example JWKS JSON string from configuration
+            String jwksJson = "{\"keys\":[{\"kty\":\"RSA\",\"kid\":\"1234\",\"use\":\"sig\",\"alg\":\"RS256\",\"n\":\"sXchPI07dsWz92kdh5PaY8uUbbhjmvnJ0dVVFh5kL6zdeN6Fw...\",\"e\":\"AQAB\",\"d\":\"kL_YFvdg1hv8Pv1CMsE5_u4ShmRtZLdx6RpHvWb-TLh...\",\"p\":\"3gJgG7IUpyiMLoIM3o8F32n...\",\"q\":\"wGuKcH42Drp7g1dd...\",\"dp\":\"OyR93uEp5Q8j...\",\"dq\":\"povbAF1d_...\",\"qi\":\"jD9zAgXv...\"}]}";
+            String issuer = "your-issuer";
+            String subject = "your-subject";
+            String audience = "your-audience";
+            long ttlMillis = 3600000; // 1 hour
+
+            String jwt = createJwtAssertion(jwksJson, issuer, subject, audience, ttlMillis);
+            System.out.println("Generated JWT: " + jwt);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
